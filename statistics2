@@ -1,0 +1,118 @@
+
+public interface IGameData
+{
+    string PlayerName { get; }
+}
+
+public class GameHistory : IGameData
+{
+    public string PlayerName { get; set; }
+    public int Score { get; set; }
+}
+
+public class GameStatistics<T> where T : IGameData
+{
+    private List<T> statistics = new();
+    private readonly string filePath;
+    private readonly string fileFormat;
+    private readonly string gamesPlayedPath;
+
+    public GameStatistics(string format = "json")
+    {
+        fileFormat = format.ToLower();
+        filePath = $"gamehistory.{fileFormat}";
+        gamesPlayedPath = "gamesplayed.json";
+        LoadStatistics();
+    }
+
+    // KRAV #:
+    // 1: Generics
+    // 2: Konceptet används genom en generisk klass 
+    // 3: Generics används för att kunna ha olika filformat. Filformaten används för att spara och läsa statistik
+
+    public interface IGameData
+    {
+        Dictionary<string, object> Data { get; }
+    }
+
+    public class DynamicGameData : IGameData
+    {
+        public Dictionary<string, object> Data { get; set; } = new();
+    }
+
+    public class TxtFileManager<T> : IFileManager<T> where T : IGameData, new()
+    {
+        public List<T> Load(string filePath)
+        {
+            var results = new List<T>();
+            if (!File.Exists(filePath)) return results;
+
+            var lines = File.ReadAllLines(filePath);
+            foreach (var line in lines)
+            {
+                var values = line.Split('|');
+                var dataDict = new Dictionary<string, object>();
+                for (int i = 0; i < values.Length; i += 2)
+                {
+                    dataDict[values[i]] = values[i + 1];
+                }
+
+                var obj = new T { Data = dataDict };
+                results.Add(obj);
+            }
+            return results;
+        }
+
+        public void Save(string filePath, List<T> data)
+        {
+            var lines = data.Select(d => string.Join("|", d.Data.Select(kvp => $"{kvp.Key}|{kvp.Value}")));
+            File.WriteAllLines(filePath, lines);
+        }
+    }
+
+    public class GameStatistics<T> where T : IGameData, new()
+    {
+        private readonly List<T> statistics;
+        private readonly IFileManager<T> fileManager;
+        private readonly string gamesPlayedPath = "gamesplayed.json";
+
+        public GameStatistics(IFileManager<T> fileManager, string filePath)
+        {
+            this.fileManager = fileManager;
+            this.statistics = fileManager.Load(filePath);
+        }
+
+        private Dictionary<string, int> LoadGamesPlayed()
+        {
+            if (!File.Exists(gamesPlayedPath))
+                return new Dictionary<string, int>();
+
+            string json = File.ReadAllText(gamesPlayedPath);
+            return JsonSerializer.Deserialize<Dictionary<string, int>>(json) ?? new Dictionary<string, int>();
+        }
+
+        private void SaveGamesPlayed(Dictionary<string, int> gamesPlayed)
+        {
+            string json = JsonSerializer.Serialize(gamesPlayed, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(gamesPlayedPath, json);
+        }
+
+        public void AddData(T data)
+        {
+            statistics.Add(data);
+            fileManager.Save("gamehistory.txt", statistics);
+
+            var gamesPlayed = LoadGamesPlayed();
+            string playerName = data.Data.ContainsKey("PlayerName") ? data.Data["PlayerName"].ToString() : "Unknown";
+            if (!gamesPlayed.ContainsKey(playerName))
+                gamesPlayed[playerName] = 0;
+            gamesPlayed[playerName]++;
+            SaveGamesPlayed(gamesPlayed);
+        }
+    }
+
+
+  
+    //hitta något syfte för att använda tre olika filstrukturer? förslagsvis xml, för datornamn och att ändra färg på spelet beroende 
+    //på val av datornamn kanske? om de behövs 3?
+
